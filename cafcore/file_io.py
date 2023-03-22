@@ -24,13 +24,13 @@ def write_data_csv(
     fileName = fileBasename
 
     # Set processing and accuracy level, if needed
-    if accuracyLevel or processingLevel:
+    if (accuracyLevel != None or processingLevel != None):
         fileName = fileName + "_"
 
-        if processingLevel:
+        if processingLevel != None:
             fileName = fileName + "P" + str(processingLevel)
 
-        if accuracyLevel:
+        if accuracyLevel != None:
             fileName = fileName + "A" + str(accuracyLevel)
         
     # Tie it all together

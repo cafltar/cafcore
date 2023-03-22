@@ -128,8 +128,32 @@ def quality_assurance(df: pd.DataFrame, pathToQAFile: str, idColName: str) -> pd
 
         result.drop(matchedRowIndex, inplace = True)
 
+    result = result.reset_index(drop=True)
+
+    # Create a new row
     for index, row in qaCreate.iterrows():
-        raise Exception("Not implemented yet")
+        rowValues = eval(row["NewVal"])
+        newRow = pd.DataFrame(rowValues, index=[0])
+
+        result = pd.concat([result, newRow], axis = 0, ignore_index=True)
+
+        dfCols = list(result.columns)
+        newRowCols = list(newRow.columns)
+
+        # Update _qcPhrase columns if they exist in the main dataset
+        for c in newRowCols:
+            potentialQCCol = c + "_qcPhrase"
+            if potentialQCCol in dfCols:
+                changePhrase = "(Assurance) Row created, reason: {}".format(row["Comment"])
+
+                series = result.loc[(result[idColName] == row["ID"]), potentialQCCol]
+
+                result.loc[(result[idColName] == row["ID"]), potentialQCCol] = update_phrase(
+                    result.loc[series.index[0], potentialQCCol],
+                    changePhrase
+                )
+
+    result = result.reset_index(drop=True)
 
     # Update values
     for index, row in qaUpdate.iterrows():
@@ -144,7 +168,7 @@ def quality_assurance(df: pd.DataFrame, pathToQAFile: str, idColName: str) -> pd
         prevValue = prevValueSeries.values[0]
         changePhraseCol = row["Variable"] + "_qcPhrase"
 
-        if(np.isnan(row["NewVal"])):
+        if(pd.isna(row["NewVal"])):
             result.loc[(result[idColName] == row["ID"]), row["Variable"]] = None
         else:
             result.loc[(result[idColName] == row["ID"]), row["Variable"]] = row["NewVal"]
