@@ -188,7 +188,12 @@ def quality_assurance(df: pd.DataFrame, pathToQAFile: str, idColName: str) -> pd
 
     return result
 
-def process_qc_bounds_check(df: pd.DataFrame, idColName: str, lower: int, upper: int) -> pd.DataFrame:
+def process_qc_bounds_check(
+        df: pd.DataFrame, 
+        idColName: str, 
+        lower: int, 
+        upper: int,
+        flagNulls: bool = False) -> pd.DataFrame:
     """Conducts a bounds check for each measurement in the idColName specified, adds _qcApplied, _qcResult, and _qcPhrase columns. Sets the "point" bit to true for _qcApplied ("000010"), updates _qcResult depending on pass/fail, and specifies reason for fail in _qcPhrase.
 
     If QC columns not present, ones will be created.
@@ -197,6 +202,7 @@ def process_qc_bounds_check(df: pd.DataFrame, idColName: str, lower: int, upper:
     :param idColName: str, name of the column in df to be checked
     :param lower: int, the lower bounds of the bounds check
     :param upper: int, the upper bounds of the bounds check
+    :param flagNulls: bool, if true then null values will fail the bounds check
     :rtype: pd.DataFrame, dataframe copied from df with additional columns and results of the bounds check
     """
 
@@ -218,11 +224,18 @@ def process_qc_bounds_check(df: pd.DataFrame, idColName: str, lower: int, upper:
         df_out[qc_result_colName] = "000000"
 
     # result code defaults to 0 (passed), set to 000010 (fail) if outside of bounds
-    df_out.update(df_out.loc[(pd.isna(df_out[idColName]) | (df_out[idColName] < lower) | (df_out[idColName] > upper)), qc_result_colName].apply(lambda x: update_qc_bitstring(x, "000010")))
+    # TODO: Definitely refactor this ugly code
+    if(flagNulls):
+        df_out.update(df_out.loc[(pd.isna(df_out[idColName]) | (df_out[idColName] < lower) | (df_out[idColName] > upper)), qc_result_colName].apply(lambda x: update_qc_bitstring(x, "000010")))
     
-    changePhrase = "(Point) Value outside of bounds [{0}, {1}]".format(lower, upper)
-    df_out.update(df_out.loc[(pd.isna(df_out[idColName]) | (df_out[idColName] < lower) | (df_out[idColName] > upper)), qc_reason_colName].apply(lambda x: update_phrase(x, changePhrase)))
+        changePhrase = "(Point) Value outside of bounds [{0}, {1}]".format(lower, upper)
+        df_out.update(df_out.loc[(pd.isna(df_out[idColName]) | (df_out[idColName] < lower) | (df_out[idColName] > upper)), qc_reason_colName].apply(lambda x: update_phrase(x, changePhrase)))
+    else:
+        df_out.update(df_out.loc[((df_out[idColName] < lower) | (df_out[idColName] > upper)), qc_result_colName].apply(lambda x: update_qc_bitstring(x, "000010")))
     
+        changePhrase = "(Point) Value outside of bounds [{0}, {1}]".format(lower, upper)
+        df_out.update(df_out.loc[((df_out[idColName] < lower) | (df_out[idColName] > upper)), qc_reason_colName].apply(lambda x: update_phrase(x, changePhrase)))
+
     return df_out
 
 def sort_qc_columns(df: pd.DataFrame, groupWithMeasure:bool = True) -> pd.DataFrame:
