@@ -116,6 +116,7 @@ def quality_assurance(df: pd.DataFrame, pathToQAFile: str, idColName: str) -> pd
     qaDelete = qa[qa["Verb"] == "Delete"]
     qaCreate = qa[qa["Verb"] == "Create"]
     qaUpdate = qa[qa["Verb"] == "Update"]
+    qaFlag = qa[qa["Verb"] == "Flag"]
 
     result = df.copy()
 
@@ -158,7 +159,7 @@ def quality_assurance(df: pd.DataFrame, pathToQAFile: str, idColName: str) -> pd
     # Update values
     for index, row in qaUpdate.iterrows():
         
-        prevValueSeries = result.loc[(result[idColName] == row["ID"]), row["Variable"]]
+        prevValueSeries = result.loc[(result[idColName].astype(str) == row["ID"]), row["Variable"]]
         
         if len(prevValueSeries) == 0:
             raise Exception("ID not found, check QA File")
@@ -185,6 +186,29 @@ def quality_assurance(df: pd.DataFrame, pathToQAFile: str, idColName: str) -> pd
             result.loc[series.index[0], changePhraseCol],
             changePhrase
         )
+
+    # Flag values by setting QA bit to fail
+    for index, row in qaFlag.iterrows():
+        reasonPhraseCol = row['Variable'] + '_qcPhrase'
+        changePhrase = "(Assurance) {}".format(row['Comment'])
+
+        qaResultCol = row['Variable'] + '_qcResult'
+
+        # Create column if not exist
+        if reasonPhraseCol not in result.columns:
+            result[reasonPhraseCol] = None
+        if qaResultCol not in result.columns:
+            result[qaResultCol] = None
+
+        phrase_series = result.loc[(result[idColName] == row['ID']), reasonPhraseCol]
+
+        result.loc[(result[idColName] == row['ID']), reasonPhraseCol] = update_phrase(
+            result.loc[phrase_series.index[0], reasonPhraseCol],
+            changePhrase
+        )
+
+        result.loc[(result[idColName] == row['ID']), qaResultCol] = update_qc_bitstring(
+            '000001', '000000')
 
     return result
 
@@ -266,3 +290,63 @@ def sort_qc_columns(df: pd.DataFrame, groupWithMeasure:bool = True) -> pd.DataFr
         sortedCols = colMeasure + colsQC
 
     return dfOut[sortedCols]
+
+def ensure_columns(df: pd.DataFrame, dimension_cols: list, metric_cols: list, check_qc_cols:bool = True) -> bool:
+    """Checks that df only has the columns in the dimension_cols and metric_cols; includes associated qc columns by default
+
+    param df: pd.DataFrame, dataframe with the columns to be checked
+    param dimension_cols
+    """
+    qc_suffixes = ['_qcApplied', '_qcResult', '_qcPhrase']
+    all_cols = df.columns
+
+    non_qc_cols = [col for col in all_cols if not any(qc_suffix in col for qc_suffix in qc_suffixes)]
+    qc_cols = [col for col in all_cols if any(qc_suffix in col for qc_suffix in qc_suffixes)]
+
+    check_passes = True
+
+    # Ensure that column counts are as expected
+    if check_qc_cols:
+        expected_num_cols = len(dimension_cols) + len(metric_cols) + (len(qc_suffixes) * len(metric_cols))
+        if expected_num_cols != len(all_cols):
+            return False
+    else:
+        expected_num_cols = len(dimension_cols) + len(metric_cols)
+        if expected_num_cols != len(non_qc_cols):
+            return False
+        
+    # Ensure that all expected columns are present
+    if set(non_qc_cols) != set(dimension_cols + metric_cols):
+        return False
+        
+    if check_qc_cols:
+        expected_qc_cols = [metric_col + qc_suffix for metric_col in metric_cols for qc_suffix in qc_suffixes]
+        if set(qc_cols) != set(expected_qc_cols):
+            return False
+        
+    return check_passes
+
+def add_processing_suffix(df: pd.DataFrame, col_basenames: list, processing_level: int, include_qc_cols: bool = True) -> pd.DataFrame:
+    """Adds P{processing_level} to the end of all metric columns and updates relevant QC columns if indicated
+    """
+    result = df.copy()
+    processing_suffix = '_P' + str(processing_level)
+    qc_suffixes = ['_qcApplied', '_qcResult', '_qcPhrase']
+
+    for col in col_basenames:
+        if col in result.columns:
+            result.rename(columns = {col: col+processing_suffix}, inplace = True)
+
+            if include_qc_cols:
+                for qc_suffix in qc_suffixes:
+                    qc_col = col + qc_suffix
+                    if qc_col in result.columns:
+                        new_qc_col = col + processing_suffix + qc_suffix
+                        result.rename(columns = {qc_col: new_qc_col}, inplace = True)
+
+    return result
+
+#def ensure_rows_by_timestep(df: pd.DataFrame, datetime_col:str, observation_col: str, observation_ids: list, timestep: pd.Timedelta):
+#    """Checks that each observation is present for each timestep
+#    """
+#    raise Exception("Not implemented")
