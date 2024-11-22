@@ -20,9 +20,9 @@ def initialize_qc(df: pd.DataFrame, colOmit:list = []) -> pd.DataFrame:
     result = df.copy()
 
     for col in colNames:
-        qcAppliedColName = col + "_qcApplied"
-        qcResultColName = col + "_qcResult"
-        qcPhraseColName = col + "_qcPhrase"
+        qcAppliedColName = col + qcAppliedSuffix
+        qcResultColName = col + qcResultSuffix
+        qcPhraseColName = col + qcPhraseColSuffix
         
         if qcAppliedColName not in result.columns:
             result[qcAppliedColName] = "000000"
@@ -102,8 +102,54 @@ def set_quality_assurance_applied(df: pd.DataFrame, colsOmit:list = [], qcApplie
 
     return result
 
+def quality_assurance_calculated(df: pd.DataFrame, idColName: str, parentCols: list) -> pd.DataFrame:
+    """Creates a new DataFrame from df and sets the QA bit based on the QA bit from a list of parent columns
+    """
+    
+    qcAppliedSuffix = '_qcApplied'
+    qcResultSuffix = '_qcResult'
+    qcPhraseSuffix = '_qcPhrase'
+
+    result = df.copy()
+
+    # Make sure parentCols exist
+    for col in parentCols:
+        qcResultCol = col + qcResultSuffix
+        if qcResultCol not in df.columns:
+            raise Exception("Could not find parent column: " + qcResultCol)
+
+    # Check parentCols if any QC failed
+    for index, row in result.iterrows():
+        numberColsFail = 0
+        reasonPhrase = ""
+
+        colApplied = idColName + qcAppliedSuffix
+        colResult = idColName + qcResultSuffix
+        colPhrase = idColName + qcPhraseSuffix
+
+        for col in parentCols:
+            qcResultCol = col + qcResultSuffix
+            #if int(row[qcResultCol] != None):
+            if not pd.isna(row[qcResultCol]):
+                if int(row[qcResultCol]) > 0:
+                    numberColsFail += 1
+                    qcPhraseCol = col + qcPhraseSuffix
+                    reasonPhrase = ' | '.join([reasonPhrase, (col + ": " + row[qcPhraseCol])])
+
+        if numberColsFail > 0:
+            reasonPhrase = "(Assurance) values used in a calculation failed one or more QC checks: " + reasonPhrase
+
+            result.at[index, colApplied] = update_qc_bitstring(row[colApplied], "000001")
+            result.at[index, colResult] = update_qc_bitstring(row[colResult], "000001")
+            result.at[index, colPhrase] = update_phrase(row[colPhrase], reasonPhrase)
+        else:
+            result.at[index, colApplied] = update_qc_bitstring(row[colApplied], "000001")
+            result.at[index, colResult] = update_qc_bitstring(row[colResult], "000000")
+
+    return result
+
 def quality_assurance(df: pd.DataFrame, pathToQAFile: str, idColName: str) -> pd.DataFrame:
-    """Creates a new DataFrame from df with changes (Create, Update, Delete) specified in the specified QA file
+    """Creates a new DataFrame from df with changes (Create, Update, Delete, Flag) specified in the specified QA file
 
     :param df: DataFrame, must have column that matches "idColName"
     :param pathToQAFile: str, path to existing csv file with columns: "ID", "Verb", "Variable", "NewVal", "Comment", "Reviewer"
