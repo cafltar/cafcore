@@ -134,10 +134,14 @@ def quality_assurance_calculated(df: pd.DataFrame, idColName: str, parentCols: l
                 if int(row[qcResultCol]) > 0:
                     numberColsFail += 1
                     qcPhraseCol = col + qcPhraseSuffix
-                    reasonPhrase = ' | '.join([reasonPhrase, (col + ": " + row[qcPhraseCol])])
+
+                    if reasonPhrase == "":
+                        reasonPhrase = (col + ": " + row[qcPhraseCol])
+                    else:
+                        reasonPhrase = reasonPhrase + " , " + (col + ": " + row[qcPhraseCol])
 
         if numberColsFail > 0:
-            reasonPhrase = "(Assurance) values used in a calculation failed one or more QC checks: " + reasonPhrase
+            reasonPhrase = "(Assurance) values used in a calculation failed one or more QC checks: [" + reasonPhrase + "]"
 
             result.at[index, colApplied] = update_qc_bitstring(row[colApplied], "000001")
             result.at[index, colResult] = update_qc_bitstring(row[colResult], "000001")
@@ -305,6 +309,82 @@ def process_qc_bounds_check(
     
         changePhrase = "(Point) Value outside of bounds [{0}, {1}]".format(lower, upper)
         df_out.update(df_out.loc[((df_out[idColName] < lower) | (df_out[idColName] > upper)), qc_reason_colName].apply(lambda x: update_phrase(x, changePhrase)))
+
+    return df_out
+
+def process_qc_greater_than_check(
+        df: pd.DataFrame,
+        idColName: str,
+        idColNameCompare: str,
+        flagNulls: bool = False) -> pd.DataFrame:
+    """Conducts a quality control check at the observation level. Checks if idColName is greater than idColNameCompare. Test fails if not.
+    :rtype: pd.DataFrame, dataframe copied from df with additional columns and results of the bounds check
+    """
+
+    df_out = df.copy()
+
+    qc_applied_colName = idColName + "_qcApplied"
+    qc_result_colName = idColName + "_qcResult"
+    qc_reason_colName = idColName + "_qcPhrase"
+    
+    if qc_applied_colName not in df.columns:
+        df_out[qc_applied_colName] = "000000"
+    
+    df_out[qc_applied_colName] = df_out[qc_applied_colName].apply(lambda x: update_qc_bitstring(x, "000100"))
+
+    if qc_result_colName not in df.columns:
+        df_out[qc_result_colName] = "000000"
+
+    # result code defaults to 0 (passed), set to 000100 (fail) if not greater than
+    # TODO: Definitely refactor this ugly code
+    if(flagNulls):
+        df_out.update(df_out.loc[(pd.isna(df_out[idColName]) | (df_out[idColName] < df_out[idColNameCompare])), qc_result_colName].apply(lambda x: update_qc_bitstring(x, "000100")))
+    
+        changePhrase = "(Observation) Value should be greater than value for {0}".format(idColNameCompare)
+        df_out.update(df_out.loc[(pd.isna(df_out[idColName]) | (df_out[idColName] < df_out[idColNameCompare])), qc_reason_colName].apply(lambda x: update_phrase(x, changePhrase)))
+    else:
+        df_out.update(df_out.loc[((df_out[idColName] < df_out[idColNameCompare])), qc_result_colName].apply(lambda x: update_qc_bitstring(x, "000100")))
+    
+        changePhrase = "(Observation) Value should be greater than value for {0}".format(idColNameCompare)
+        df_out.update(df_out.loc[((df_out[idColName] < df_out[idColNameCompare])), qc_reason_colName].apply(lambda x: update_phrase(x, changePhrase)))
+
+    return df_out
+
+def process_qc_less_than_check(
+        df: pd.DataFrame,
+        idColName: str,
+        idColNameCompare: str,
+        flagNulls: bool = False) -> pd.DataFrame:
+    """Conducts a quality control check at the observation level. Checks if idColName is less than idColNameCompare. Test fails if not.
+    :rtype: pd.DataFrame, dataframe copied from df with additional columns and results of the bounds check
+    """
+
+    df_out = df.copy()
+
+    qc_applied_colName = idColName + "_qcApplied"
+    qc_result_colName = idColName + "_qcResult"
+    qc_reason_colName = idColName + "_qcPhrase"
+    
+    if qc_applied_colName not in df.columns:
+        df_out[qc_applied_colName] = "000000"
+    
+    df_out[qc_applied_colName] = df_out[qc_applied_colName].apply(lambda x: update_qc_bitstring(x, "000100"))
+
+    if qc_result_colName not in df.columns:
+        df_out[qc_result_colName] = "000000"
+
+    # result code defaults to 0 (passed), set to 000100 (fail) if not greater than
+    # TODO: Definitely refactor this ugly code
+    if(flagNulls):
+        df_out.update(df_out.loc[(pd.isna(df_out[idColName]) | (df_out[idColName] > df_out[idColNameCompare])), qc_result_colName].apply(lambda x: update_qc_bitstring(x, "000100")))
+    
+        changePhrase = "(Observation) Value should be less than value for {0}".format(idColNameCompare)
+        df_out.update(df_out.loc[(pd.isna(df_out[idColName]) | (df_out[idColName] > df_out[idColNameCompare])), qc_reason_colName].apply(lambda x: update_phrase(x, changePhrase)))
+    else:
+        df_out.update(df_out.loc[((df_out[idColName] > df_out[idColNameCompare])), qc_result_colName].apply(lambda x: update_qc_bitstring(x, "000100")))
+    
+        changePhrase = "(Observation) Value should be less than value for {0}".format(idColNameCompare)
+        df_out.update(df_out.loc[((df_out[idColName] > df_out[idColNameCompare])), qc_reason_colName].apply(lambda x: update_phrase(x, changePhrase)))
 
     return df_out
 
