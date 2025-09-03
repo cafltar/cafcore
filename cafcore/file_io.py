@@ -156,7 +156,6 @@ def calculate_qc_summary_col(row, cols, qcSuffix):
     return round(coverage, 1)
 
 def append_qc_summary_cols(df:pl.DataFrame, dimension_vars, index_cols: list, index_schema: dict):
-    print ('write simplified qc files')
     # Takes dataframe with full detailed columns like _P1, _P2, _qcApplied, etc. and writes a simplified data file and a separate qc file
 
     # Write summary columns for qc applied and qc results

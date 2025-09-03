@@ -186,7 +186,8 @@ def quality_assurance(df: pd.DataFrame, pathToQAFile: str, idColName: str) -> pd
         rowValues = eval(row["NewVal"])
         newRow = pd.DataFrame(rowValues, index=[0])
 
-        result = pd.concat([result, newRow], axis = 0, ignore_index=True)
+        if not newRow.empty:
+            result = pd.concat([result, newRow], axis = 0, ignore_index=True)
 
         dfCols = list(result.columns)
         newRowCols = list(newRow.columns)
@@ -222,7 +223,16 @@ def quality_assurance(df: pd.DataFrame, pathToQAFile: str, idColName: str) -> pd
         if(pd.isna(row["NewVal"])):
             result.loc[(result[idColName] == row["ID"]), row["Variable"]] = None
         else:
-            result.loc[(result[idColName] == row["ID"]), row["Variable"]] = row["NewVal"]
+            target_dtype = result[row["Variable"]].dtype
+
+            if pd.api.types.is_numeric_dtype(target_dtype):
+                newValue = pd.to_numeric(row["NewVal"], errors='coerce')
+            elif pd.api.types.is_datetime64_any_dtype(target_dtype):
+                newValue = pd.to_datetime(row["NewVal"], errors='coerce')
+            else:
+                newValue = row["NewVal"]
+        
+            result.loc[(result[idColName] == row["ID"]), row["Variable"]] = newValue
 
         changePhrase = "(Assurance) Previous val: {}, reason: {}".format(prevValue, row["Comment"])
         
@@ -420,14 +430,24 @@ def sort_qc_columns(df: pd.DataFrame, groupWithMeasure:bool = True) -> pd.DataFr
 def ensure_columns(df: pd.DataFrame, dimension_cols: list, metric_cols: list, check_qc_cols:bool = True) -> bool:
     """Checks that df only has the columns in the dimension_cols and metric_cols; includes associated qc columns by default
 
+    NOTE: Strips off processing suffix (e.g. ignores '_P1', '_P2', etc.)
+
     param df: pd.DataFrame, dataframe with the columns to be checked
     param dimension_cols
     """
     qc_suffixes = ['_qcApplied', '_qcResult', '_qcPhrase']
-    all_cols = df.columns
 
-    non_qc_cols = [col for col in all_cols if not any(qc_suffix in col for qc_suffix in qc_suffixes)]
-    qc_cols = [col for col in all_cols if any(qc_suffix in col for qc_suffix in qc_suffixes)]
+
+    #all_cols = df.columns
+    #all_cols = [s.replace(p, '') for s in df.columns for p in p_suffixes]
+    all_cols = remove_processing_suffixes(df.columns)
+
+
+    non_qc_cols_original = [col for col in df.columns if not any(qc_suffix in col for qc_suffix in qc_suffixes)]
+    qc_cols_original = [col for col in df.columns if any(qc_suffix in col for qc_suffix in qc_suffixes)]
+
+    non_qc_cols = remove_processing_suffixes(non_qc_cols_original)
+    qc_cols = remove_processing_suffixes(qc_cols_original)
 
     check_passes = True
 
@@ -451,6 +471,23 @@ def ensure_columns(df: pd.DataFrame, dimension_cols: list, metric_cols: list, ch
             return False
         
     return check_passes
+
+def remove_processing_suffixes(columns: list):
+    p_suffixes = ['_P1', '_P2', '_P3']
+
+    result = []
+
+    cols = columns.copy()
+
+    for col in cols:
+        newCol = col
+        for p in p_suffixes:
+            newCol = newCol.replace(p, '')
+        if newCol not in result:
+            result.append(newCol)
+    
+    return result
+    
 
 def add_processing_suffix(df: pd.DataFrame, col_basenames: list, processing_level: int, include_qc_cols: bool = True) -> pd.DataFrame:
     """Adds P{processing_level} to the end of all metric columns and updates relevant QC columns if indicated
